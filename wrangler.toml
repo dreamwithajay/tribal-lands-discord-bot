@@ -2,6 +2,15 @@ name = "tribal-lands-discord-bot"
 main = "src/worker.js"
 compatibility_date = "2026-08-04"
 workers_dev = true
+keep_vars = true
+
+[secrets]
+required = [
+  "DISCORD_PUBLIC_KEY",
+  "DISCORD_TOKEN",
+  "DISCORD_CHANNEL_ID",
+  "PALWORLD_PASSWORD"
+]
 
 [triggers]
 crons = ["* * * * *"]

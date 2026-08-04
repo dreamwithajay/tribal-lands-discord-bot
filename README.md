@@ -15,6 +15,7 @@ It currently monitors the Palworld REST API at `135.148.100.61:25586`, keeps one
 - Polling can be paused without deleting the Discord bot setup
 - Cloudflare Workers Free runtime
 - No committed secrets
+- `keep_vars = true` so GitHub deploys preserve Cloudflare dashboard secrets
 
 ## Required Environment Variables
 
@@ -22,12 +23,12 @@ Copy `.env.example` to `.env` for local command registration and set these as Cl
 
 ```bash
 DISCORD_TOKEN=
-DISCORD_CLIENT_ID=
-DISCORD_GUILD_ID=
 DISCORD_CHANNEL_ID=
 DISCORD_PUBLIC_KEY=
 PALWORLD_PASSWORD=
 ```
+
+`DISCORD_CLIENT_ID` and `DISCORD_GUILD_ID` are needed locally for `npm run register`; the Worker itself does not need them at runtime.
 
 Defaults are already set for:
 

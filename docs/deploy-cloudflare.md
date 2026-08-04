@@ -32,6 +32,8 @@ From the screen in Cloudflare:
 
 The `STATE` KV namespace is declared in `wrangler.toml`. Wrangler can auto-create it on deploy.
 
+The repo also sets `keep_vars = true` so GitHub deploys keep dashboard-created variables and secrets instead of replacing them.
+
 ## 3. Set Worker Secrets
 
 ```bash
@@ -46,6 +48,8 @@ npx wrangler secret put PALWORLD_PASSWORD
 These values never go in Git.
 
 After adding secrets, redeploy once from Cloudflare so the live Worker definitely has the runtime values.
+
+If you add values through the Cloudflare dashboard instead of Wrangler, add them under the Production environment and use **Secret** for sensitive values.
 
 ## Game Provider Settings
 
