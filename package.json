@@ -8,7 +8,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "register": "node scripts/register-commands.js",
-    "check": "node --check src/worker.js && node --check scripts/register-commands.js"
+    "check": "node --check src/worker.js && node --check src/games/index.js && node --check src/games/palworld.js && node --check scripts/register-commands.js"
   },
   "engines": {
     "node": ">=20.9.0"

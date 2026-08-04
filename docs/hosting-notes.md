@@ -10,6 +10,7 @@ Cloudflare Workers Free:
 - Handles Discord slash commands through an Interactions Endpoint URL.
 - Uses a cron trigger to check Palworld once per minute.
 - Stores bot state in Worker KV.
+- Keeps Discord setup separate from game-specific adapters.
 
 ## Tradeoff
 

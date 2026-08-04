@@ -1,8 +1,8 @@
 # The Tribal Lands Discord Bot
 
-Phase 1 Discord companion for a BerryByte Palworld server.
+Phase 1 Discord companion for The Tribal Lands game server.
 
-It monitors the Palworld REST API at `135.148.100.61:25586`, keeps one Discord status message updated, sends Tribal Lands-themed join/leave notices, detects outages and recovery, and handles `/status` plus `/players`.
+It currently monitors the Palworld REST API at `135.148.100.61:25586`, keeps one Discord status message updated, sends Tribal Lands-themed join/leave notices, detects outages and recovery, and handles `/status` plus `/players`.
 
 ## Features
 
@@ -11,6 +11,8 @@ It monitors the Palworld REST API at `135.148.100.61:25586`, keeps one Discord s
 - Offline/crash detection after repeated failed checks
 - Recovery notification with approximate downtime
 - Slash commands: `/status` and `/players`
+- Game-provider adapter structure, starting with Palworld
+- Polling can be paused without deleting the Discord bot setup
 - Cloudflare Workers Free runtime
 - No committed secrets
 
@@ -30,6 +32,8 @@ PALWORLD_PASSWORD=
 Defaults are already set for:
 
 ```bash
+GAME_PROVIDER=palworld
+POLLING_ENABLED=true
 PALWORLD_HOST=135.148.100.61
 PALWORLD_PORT=25586
 PALWORLD_USERNAME=admin
@@ -39,6 +43,31 @@ OFFLINE_FAILURE_THRESHOLD=2
 ```
 
 `STATUS_MESSAGE_ID` is optional. If omitted, the Worker creates one and stores its ID in Worker KV.
+
+## Switching Games Later
+
+The Discord app, channel, commands, and Cloudflare Worker can stay the same. The game-specific logic lives in `src/games/`.
+
+Current options:
+
+```bash
+GAME_PROVIDER=palworld
+GAME_PROVIDER=none
+```
+
+To temporarily stop automatic Palworld monitoring while keeping slash commands available, set:
+
+```bash
+POLLING_ENABLED=false
+```
+
+To fully disable game lookups until another provider is added, set:
+
+```bash
+GAME_PROVIDER=none
+```
+
+When the server changes to another game, add a new adapter in `src/games/`, register it in `src/games/index.js`, then set `GAME_PROVIDER` to that adapter name.
 
 ## Discord Setup
 

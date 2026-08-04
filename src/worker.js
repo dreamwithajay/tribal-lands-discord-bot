@@ -1,4 +1,5 @@
 import nacl from 'tweetnacl';
+import { getGameAdapter, pollingEnabled } from './games/index.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const STATE_KEY = 'tribal-lands-state';
@@ -7,24 +8,16 @@ const ONLINE_COLOR = 0x2f855a;
 const OFFLINE_COLOR = 0xc53030;
 const UNKNOWN_COLOR = 0x718096;
 
-const JOIN_LINES = [
-  '{player} has crossed into The Tribal Lands.',
-  '{player} arrives at camp.',
-  '{player} steps through the gate and into the wilds.',
-  '{player} has entered The Tribal Lands.'
-];
-
-const LEAVE_LINES = [
-  '{player} has returned to civilization.',
-  '{player} fades from the trail.',
-  '{player} heads back beyond the border.',
-  '{player} leaves The Tribal Lands behind for now.'
-];
-
 export default {
   async fetch(request, env) {
     if (request.method === 'GET') {
-      return json({ ok: true, name: serverName(env) });
+      const adapter = getGameAdapter(env);
+      return json({
+        ok: true,
+        name: serverName(env),
+        gameProvider: adapter?.id ?? 'none',
+        pollingEnabled: pollingEnabled(env)
+      });
     }
 
     if (request.method !== 'POST') {
@@ -51,33 +44,40 @@ export default {
   },
 
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(runMonitor(env));
+    if (pollingEnabled(env)) {
+      ctx.waitUntil(runMonitor(env));
+    }
   }
 };
 
 async function handleCommand(interaction, env) {
   const command = interaction.data?.name;
+  const adapter = getGameAdapter(env);
+
+  if (!adapter) {
+    return interactionResponse(`${serverName(env)} has no active game monitor right now.`);
+  }
 
   if (command === 'status') {
     try {
-      const snapshot = await fetchPalworldSnapshot(env);
-      return interactionResponse('', [buildStatusEmbed({ env, mode: 'online', snapshot })]);
+      const snapshot = await adapter.fetchSnapshot(env);
+      return interactionResponse('', [buildStatusEmbed({ env, adapter, mode: 'online', snapshot })]);
     } catch {
-      return interactionResponse(`${serverName(env)} is not reachable right now.`);
+      return interactionResponse(renderTemplate(adapter.copy.unreachable, { server: serverName(env) }));
     }
   }
 
   if (command === 'players') {
     try {
-      const snapshot = await fetchPalworldSnapshot(env);
+      const snapshot = await adapter.fetchSnapshot(env);
       const names = snapshot.players.map((player) => player.displayName);
       const content =
         names.length > 0
-          ? `Currently in ${serverName(env)}: ${names.join(', ')}.`
-          : `No survivors are currently in ${serverName(env)}.`;
+          ? renderTemplate(adapter.copy.currentPlayers, { server: serverName(env), players: names.join(', ') })
+          : renderTemplate(adapter.copy.noPlayers, { server: serverName(env) });
       return interactionResponse(content);
     } catch {
-      return interactionResponse(`I cannot reach ${serverName(env)} right now.`);
+      return interactionResponse(renderTemplate(adapter.copy.cannotReach, { server: serverName(env) }));
     }
   }
 
@@ -85,28 +85,44 @@ async function handleCommand(interaction, env) {
 }
 
 async function runMonitor(env) {
+  const adapter = getGameAdapter(env);
+  if (!adapter) {
+    return;
+  }
+
   const state = await readState(env);
 
   try {
-    const snapshot = await fetchPalworldSnapshot(env);
-    await handleOnlineSnapshot(env, state, snapshot);
+    const snapshot = await adapter.fetchSnapshot(env);
+    await handleOnlineSnapshot(env, adapter, state, snapshot);
   } catch (error) {
-    await handlePollFailure(env, state, error);
+    await handlePollFailure(env, adapter, state, error);
   }
 }
 
-async function handleOnlineSnapshot(env, state, snapshot) {
-  const recovered = state.offlineAnnounced || state.failureCount >= offlineFailureThreshold(env);
+async function handleOnlineSnapshot(env, adapter, state, snapshot) {
+  const providerChanged = state.gameProvider && state.gameProvider !== adapter.id;
+  const recovered = !providerChanged && (state.offlineAnnounced || state.failureCount >= offlineFailureThreshold(env));
   const downtimeMs = state.offlineSince ? Date.now() - new Date(state.offlineSince).getTime() : null;
 
   if (recovered) {
-    await sendChannelMessage(env, `${serverName(env)} has returned. Downtime: ${formatDuration(downtimeMs)}.`);
+    await sendChannelMessage(
+      env,
+      renderTemplate(adapter.copy.recovered, {
+        server: serverName(env),
+        downtime: formatDuration(downtimeMs)
+      })
+    );
   }
 
-  await sendPlayerDiffs(env, state, snapshot);
+  if (!providerChanged) {
+    await sendPlayerDiffs(env, adapter, state, snapshot);
+  }
 
   const nextState = {
     ...state,
+    gameProvider: adapter.id,
+    gameLabel: adapter.label,
     failureCount: 0,
     offlineSince: null,
     offlineAnnounced: false,
@@ -115,6 +131,9 @@ async function handleOnlineSnapshot(env, state, snapshot) {
       fetchedAt: snapshot.fetchedAt.toISOString(),
       players: snapshot.players,
       info: snapshot.info,
+      gameProvider: adapter.id,
+      gameLabel: adapter.label,
+      version: snapshot.version,
       currentPlayers: snapshot.currentPlayers,
       maxPlayers: snapshot.maxPlayers
     },
@@ -122,16 +141,18 @@ async function handleOnlineSnapshot(env, state, snapshot) {
     updatedAt: new Date().toISOString()
   };
 
-  await updateStatusMessage(env, nextState, snapshot, { force: recovered });
+  await updateStatusMessage(env, adapter, nextState, snapshot, { force: recovered || providerChanged });
   await writeState(env, nextState);
 }
 
-async function handlePollFailure(env, state, error) {
+async function handlePollFailure(env, adapter, state, error) {
   const failureCount = (state.failureCount ?? 0) + 1;
   const offlineSince = state.offlineSince ?? new Date().toISOString();
   const isAuthError = error?.status === 401;
   const nextState = {
     ...state,
+    gameProvider: adapter.id,
+    gameLabel: adapter.label,
     failureCount,
     offlineSince,
     updatedAt: new Date().toISOString()
@@ -139,30 +160,28 @@ async function handlePollFailure(env, state, error) {
 
   if (isAuthError && !state.authFailureAnnounced) {
     nextState.authFailureAnnounced = true;
-    await sendChannelMessage(
-      env,
-      `${serverName(env)} REST credentials were rejected. Check the Cloudflare secret for PALWORLD_PASSWORD.`
-    );
+    await sendChannelMessage(env, renderTemplate(adapter.copy.credentialRejected, { server: serverName(env) }));
   }
 
   if (!isAuthError && failureCount >= offlineFailureThreshold(env) && !state.offlineAnnounced) {
     nextState.offlineAnnounced = true;
     await sendChannelMessage(
       env,
-      `${serverName(env)} is not answering from the trail. Last good check: ${formatDiscordTimestamp(
-        state.lastSnapshot?.fetchedAt
-      )}.`
+      renderTemplate(adapter.copy.offline, {
+        server: serverName(env),
+        lastGood: formatDiscordTimestamp(state.lastSnapshot?.fetchedAt)
+      })
     );
   }
 
-  await updateStatusMessage(env, nextState, null, {
+  await updateStatusMessage(env, adapter, nextState, null, {
     force: nextState.offlineAnnounced || isAuthError,
     mode: isAuthError ? 'auth_error' : 'offline'
   });
   await writeState(env, nextState);
 }
 
-async function sendPlayerDiffs(env, state, snapshot) {
+async function sendPlayerDiffs(env, adapter, state, snapshot) {
   if (!state.lastPlayerMap) {
     return;
   }
@@ -173,32 +192,44 @@ async function sendPlayerDiffs(env, state, snapshot) {
   const left = [...previous.values()].filter((player) => !current.has(player.key));
 
   if (joined.length === 1) {
-    await sendChannelMessage(env, fillTemplate(pick(JOIN_LINES), joined[0].displayName));
+    await sendChannelMessage(
+      env,
+      renderTemplate(pick(adapter.joinLines), { player: joined[0].displayName, server: serverName(env) })
+    );
   } else if (joined.length > 1) {
-    await sendChannelMessage(env, `A party crossed into ${serverName(env)}: ${formatNames(joined)}.`);
+    await sendChannelMessage(
+      env,
+      renderTemplate(adapter.copy.multiJoin, { server: serverName(env), players: formatNames(joined) })
+    );
   }
 
   if (left.length === 1) {
-    await sendChannelMessage(env, fillTemplate(pick(LEAVE_LINES), left[0].displayName));
+    await sendChannelMessage(
+      env,
+      renderTemplate(pick(adapter.leaveLines), { player: left[0].displayName, server: serverName(env) })
+    );
   } else if (left.length > 1) {
-    await sendChannelMessage(env, `A party left ${serverName(env)}: ${formatNames(left)}.`);
+    await sendChannelMessage(
+      env,
+      renderTemplate(adapter.copy.multiLeave, { server: serverName(env), players: formatNames(left) })
+    );
   }
 
   if (snapshot.players.length === 0 && left.length > 0) {
-    await sendChannelMessage(env, `Silence falls over ${serverName(env)}. No survivors remain.`);
+    await sendChannelMessage(env, renderTemplate(adapter.copy.emptyAfterLeave, { server: serverName(env) }));
   }
 }
 
-async function updateStatusMessage(env, state, snapshot, { force = false, mode = 'online' } = {}) {
+async function updateStatusMessage(env, adapter, state, snapshot, { force = false, mode = 'online' } = {}) {
   const now = Date.now();
   const signature = snapshot
     ? [
+        adapter.id,
         'online',
-        snapshot.info?.version,
-        snapshot.info?.servername,
+        snapshot.version,
         snapshot.players.map((player) => player.key).sort().join(',')
       ].join('|')
-    : `${mode}|${state.failureCount ?? 0}`;
+    : `${adapter.id}|${mode}|${state.failureCount ?? 0}`;
 
   if (!force && signature === state.lastStatusSignature && now - (state.lastStatusEditAt ?? 0) < statusUpdateMs(env)) {
     return;
@@ -206,8 +237,8 @@ async function updateStatusMessage(env, state, snapshot, { force = false, mode =
 
   const messageId = state.statusMessageId || env.STATUS_MESSAGE_ID;
   const embed = snapshot
-    ? buildStatusEmbed({ env, mode: 'online', snapshot })
-    : buildStatusEmbed({ env, mode, state });
+    ? buildStatusEmbed({ env, adapter, mode: 'online', snapshot })
+    : buildStatusEmbed({ env, adapter, mode, state });
 
   if (messageId) {
     const edited = await editChannelMessage(env, messageId, { embeds: [embed] });
@@ -223,12 +254,12 @@ async function updateStatusMessage(env, state, snapshot, { force = false, mode =
   state.lastStatusEditAt = now;
 }
 
-function buildStatusEmbed({ env, mode, snapshot = null, state = {} }) {
+function buildStatusEmbed({ env, adapter, mode, snapshot = null, state = {} }) {
   if (mode === 'online' && snapshot) {
     const playerText =
       snapshot.players.length > 0
         ? snapshot.players.map((player) => player.displayName).join('\n')
-        : 'No survivors currently roam the island.';
+        : adapter.copy.empty;
     const capacity = snapshot.maxPlayers
       ? `${snapshot.currentPlayers} / ${snapshot.maxPlayers}`
       : String(snapshot.currentPlayers);
@@ -236,11 +267,12 @@ function buildStatusEmbed({ env, mode, snapshot = null, state = {} }) {
     return {
       title: serverName(env),
       color: ONLINE_COLOR,
-      description: 'Online. The campfires are lit.',
+      description: adapter.copy.online,
       fields: [
-        { name: 'Version', value: snapshot.info?.version ?? 'Unknown', inline: true },
+        { name: 'Game', value: adapter.label, inline: true },
+        { name: 'Version', value: snapshot.version ?? 'Unknown', inline: true },
         { name: 'Players', value: capacity, inline: true },
-        { name: 'Survivors', value: playerText.slice(0, 1024), inline: false },
+        { name: adapter.copy.playersLabel, value: playerText.slice(0, 1024), inline: false },
         { name: 'Last check', value: formatDiscordTimestamp(snapshot.fetchedAt), inline: true }
       ],
       footer: { text: STATUS_FOOTER }
@@ -251,8 +283,11 @@ function buildStatusEmbed({ env, mode, snapshot = null, state = {} }) {
     return {
       title: serverName(env),
       color: UNKNOWN_COLOR,
-      description: 'The REST API is reachable, but the bot credentials were rejected.',
-      fields: [{ name: 'Last good check', value: formatDiscordTimestamp(state.lastSnapshot?.fetchedAt), inline: true }],
+      description: adapter.copy.authErrorDescription,
+      fields: [
+        { name: 'Game', value: adapter.label, inline: true },
+        { name: 'Last good check', value: formatDiscordTimestamp(state.lastSnapshot?.fetchedAt), inline: true }
+      ],
       footer: { text: STATUS_FOOTER }
     };
   }
@@ -260,69 +295,14 @@ function buildStatusEmbed({ env, mode, snapshot = null, state = {} }) {
   return {
     title: serverName(env),
     color: OFFLINE_COLOR,
-    description: 'Offline. The trail has gone quiet.',
+    description: adapter.copy.offlineDescription,
     fields: [
+      { name: 'Game', value: adapter.label, inline: true },
       { name: 'Failed checks', value: String(state.failureCount ?? 0), inline: true },
       { name: 'Last good check', value: formatDiscordTimestamp(state.lastSnapshot?.fetchedAt), inline: true }
     ],
     footer: { text: STATUS_FOOTER }
   };
-}
-
-async function fetchPalworldSnapshot(env) {
-  const [info, players, metrics, settings] = await Promise.all([
-    palworldRequest(env, '/info'),
-    palworldRequest(env, '/players'),
-    optionalPalworldRequest(env, '/metrics'),
-    optionalPalworldRequest(env, '/settings')
-  ]);
-
-  const playerList = normalizePlayers(players);
-  const maxPlayers = firstNumber([
-    metrics?.maxplayernum,
-    metrics?.maxPlayerNum,
-    metrics?.max_players,
-    settings?.ServerPlayerMaxNum,
-    settings?.serverPlayerMaxNum,
-    settings?.maxPlayers
-  ]);
-
-  return {
-    fetchedAt: new Date(),
-    info,
-    players: playerList,
-    metrics,
-    settings,
-    currentPlayers: playerList.length,
-    maxPlayers
-  };
-}
-
-async function optionalPalworldRequest(env, path) {
-  try {
-    return await palworldRequest(env, path);
-  } catch {
-    return null;
-  }
-}
-
-async function palworldRequest(env, path) {
-  const baseUrl = `http://${env.PALWORLD_HOST}:${env.PALWORLD_PORT}/v1/api`;
-  const auth = btoa(`${env.PALWORLD_USERNAME}:${env.PALWORLD_PASSWORD}`);
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Basic ${auth}`
-    }
-  });
-
-  if (!response.ok) {
-    const error = new Error(`Palworld REST returned HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
-
-  return response.json();
 }
 
 async function sendChannelMessage(env, content, extra = {}) {
@@ -394,55 +374,6 @@ function interactionResponse(content, embeds = []) {
   });
 }
 
-function normalizePlayers(payload) {
-  const rawPlayers = Array.isArray(payload) ? payload : payload?.players;
-  if (!Array.isArray(rawPlayers)) {
-    return [];
-  }
-
-  return rawPlayers
-    .filter(Boolean)
-    .map((player) => ({
-      ...player,
-      displayName: playerName(player),
-      key: playerKey(player)
-    }))
-    .filter((player) => player.key && player.displayName);
-}
-
-function playerKey(player) {
-  return String(
-    player.userId ??
-      player.userid ??
-      player.playeruid ??
-      player.playerId ??
-      player.steamid ??
-      player.steamId ??
-      player.accountName ??
-      player.name
-  );
-}
-
-function playerName(player) {
-  return String(
-    player.name ??
-      player.playerName ??
-      player.accountName ??
-      player.nickname ??
-      playerKey(player)
-  );
-}
-
-function firstNumber(values) {
-  for (const value of values) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-  return null;
-}
-
 function serverName(env) {
   return env.SERVER_DISPLAY_NAME || 'The Tribal Lands';
 }
@@ -463,8 +394,11 @@ function pick(lines) {
   return lines[Math.floor(Math.random() * lines.length)];
 }
 
-function fillTemplate(template, player) {
-  return template.replace('{player}', player);
+function renderTemplate(template, values) {
+  return Object.entries(values).reduce(
+    (message, [key, value]) => message.replaceAll(`{${key}}`, value),
+    template
+  );
 }
 
 function formatDiscordTimestamp(date) {

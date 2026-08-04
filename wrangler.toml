@@ -12,6 +12,8 @@ id = "replace_with_cloudflare_kv_namespace_id"
 preview_id = "replace_with_cloudflare_preview_kv_namespace_id"
 
 [vars]
+GAME_PROVIDER = "palworld"
+POLLING_ENABLED = "true"
 PALWORLD_HOST = "135.148.100.61"
 PALWORLD_PORT = "25586"
 PALWORLD_USERNAME = "admin"

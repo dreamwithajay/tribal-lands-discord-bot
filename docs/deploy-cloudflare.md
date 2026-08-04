@@ -7,6 +7,7 @@ Cloudflare Workers runs the bot without your PC staying on:
 - A cron trigger checks the Palworld server once per minute.
 - Discord slash commands use the app's Interactions Endpoint URL.
 - Worker KV stores the latest state and persistent status message ID.
+- `GAME_PROVIDER` lets the same Discord bot support another game later.
 
 ## 1. Create a Free Cloudflare Account
 
@@ -38,6 +39,19 @@ npx wrangler secret put PALWORLD_PASSWORD
 ```
 
 These values never go in Git.
+
+## Game Provider Settings
+
+These live in `wrangler.toml`:
+
+```bash
+GAME_PROVIDER=palworld
+POLLING_ENABLED=true
+```
+
+Set `POLLING_ENABLED=false` to pause automatic polling while keeping `/status` and `/players` live.
+
+Set `GAME_PROVIDER=none` to disable game lookups until another game adapter is added.
 
 ## 4. Deploy
 
