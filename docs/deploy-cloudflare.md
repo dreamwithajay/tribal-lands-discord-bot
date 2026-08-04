@@ -18,14 +18,19 @@ npm install
 npx wrangler login
 ```
 
-## 2. Create KV State Storage
+## 2. Connect GitHub
 
-```bash
-npx wrangler kv namespace create STATE
-npx wrangler kv namespace create STATE --preview
-```
+From the screen in Cloudflare:
 
-Copy the returned `id` and `preview_id` into `wrangler.toml`.
+1. Select **Connect GitHub**.
+2. Choose `dreamwithajay/tribal-lands-discord-bot`.
+3. Keep the production branch as `main`.
+4. Leave the root directory blank.
+5. Leave the build command blank.
+6. Keep the deploy command as `npx wrangler deploy`.
+7. Save and deploy.
+
+The `STATE` KV namespace is declared in `wrangler.toml`. Wrangler can auto-create it on deploy.
 
 ## 3. Set Worker Secrets
 
@@ -39,6 +44,8 @@ npx wrangler secret put PALWORLD_PASSWORD
 ```
 
 These values never go in Git.
+
+After adding secrets, redeploy once from Cloudflare so the live Worker definitely has the runtime values.
 
 ## Game Provider Settings
 
