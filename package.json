@@ -2,17 +2,22 @@
   "name": "tribal-lands-discord-bot",
   "version": "1.0.0",
   "description": "Phase 1 Discord companion for The Tribal Lands Palworld server.",
-  "main": "src/index.js",
+  "main": "src/worker.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "check": "node --check src/config.js && node --check src/palworldClient.js && node --check src/discordBot.js && node --check src/index.js"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "register": "node scripts/register-commands.js",
+    "check": "node --check src/worker.js && node --check scripts/register-commands.js"
   },
   "engines": {
     "node": ">=20.9.0"
   },
   "dependencies": {
-    "discord.js": "^14.16.3",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "wrangler": "^4.27.0"
   }
 }

@@ -1,27 +1,31 @@
 # Hosting Notes
 
-This bot needs a continuously running process because it monitors Palworld every few seconds and keeps a live Discord gateway connection.
+This bot needs a place to run without the user's PC staying on.
 
 ## Recommended
 
-Oracle Cloud Always Free VM:
+Cloudflare Workers Free:
 
-- Actually runs a long-lived process.
-- No need for the user's PC to stay on.
-- Docker Compose keeps deployment simple.
-- The VM does not need any public HTTP port for the bot.
+- Runs without a home PC or paid VM.
+- Handles Discord slash commands through an Interactions Endpoint URL.
+- Uses a cron trigger to check Palworld once per minute.
+- Stores bot state in Worker KV.
 
-## Not Recommended as the Primary Free Path
+## Tradeoff
 
-GitHub Actions:
+Cloudflare cron triggers run at minute-level granularity, so join/leave notifications are not 10-second real-time. For a free setup, this is a better fit than trying to keep a GitHub Actions job alive.
+
+## Not Recommended as the Primary Runtime
 
 - Scheduled workflows are not designed for 10-second monitoring.
-- They cannot hold a continuous Discord gateway connection as a bot runtime.
+- Long-running workflow jobs are temporary.
+- Private repositories have a monthly free-minutes quota.
+- GitHub should host the code, not the live bot process.
 
 Render Free Web Service:
 
 - Free web services can spin down after idle periods.
-- Spin-down breaks continuous Discord monitoring.
+- Spin-down breaks continuous monitoring.
 
 Koyeb Free Web Service:
 
