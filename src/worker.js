@@ -59,35 +59,31 @@ async function handleCommand(interaction, env) {
   }
 
   if (command === 'status') {
-    try {
-      const snapshot = await adapter.fetchSnapshot(env);
-      await cacheCommandSnapshot(env, adapter, snapshot);
-      return interactionResponse('', [buildStatusEmbed({ env, adapter, mode: 'online', snapshot })]);
-    } catch (error) {
-      console.warn('Live status command failed', error);
-      const cached = await readCachedSnapshot(env, adapter);
-      if (cached) {
-        return interactionResponse('', [buildStatusEmbed({ env, adapter, mode: 'online', snapshot: cached })]);
-      }
+    const state = await readState(env);
+    const cached = readCachedSnapshotFromState(state, adapter);
 
-      return interactionResponse(renderTemplate(adapter.copy.unreachable, { server: serverName(env) }));
+    if (cached) {
+      return interactionResponse('', [buildStatusEmbed({ env, adapter, mode: 'online', snapshot: cached })]);
     }
+
+    if (state.gameProvider === adapter.id && state.failureCount > 0) {
+      return interactionResponse('', [buildStatusEmbed({ env, adapter, mode: 'offline', state })]);
+    }
+
+    return interactionResponse(`${serverName(env)} is waiting for its first scheduled check.`);
   }
 
   if (command === 'players') {
-    try {
-      const snapshot = await adapter.fetchSnapshot(env);
-      await cacheCommandSnapshot(env, adapter, snapshot);
-      return interactionResponse(formatPlayersResponse(env, adapter, snapshot));
-    } catch (error) {
-      console.warn('Live players command failed', error);
-      const cached = await readCachedSnapshot(env, adapter);
-      if (cached) {
-        return interactionResponse(`${formatPlayersResponse(env, adapter, cached)} Last check: ${formatDiscordTimestamp(cached.fetchedAt)}.`);
-      }
+    const state = await readState(env);
+    const cached = readCachedSnapshotFromState(state, adapter);
 
-      return interactionResponse(renderTemplate(adapter.copy.cannotReach, { server: serverName(env) }));
+    if (cached) {
+      return interactionResponse(
+        `${formatPlayersResponse(env, adapter, cached)} Last check: ${formatDiscordTimestamp(cached.fetchedAt)}.`
+      );
     }
+
+    return interactionResponse(`${serverName(env)} is waiting for its first scheduled check.`);
   }
 
   return interactionResponse(`Unknown command.`);
@@ -107,22 +103,6 @@ async function runMonitor(env) {
   } catch (error) {
     await handlePollFailure(env, adapter, state, error);
   }
-}
-
-async function cacheCommandSnapshot(env, adapter, snapshot) {
-  const state = await readState(env);
-  await writeState(env, {
-    ...state,
-    gameProvider: adapter.id,
-    gameLabel: adapter.label,
-    failureCount: 0,
-    offlineSince: null,
-    offlineAnnounced: false,
-    authFailureAnnounced: false,
-    lastSnapshot: serializeSnapshot(adapter, snapshot),
-    lastPlayerMap: Object.fromEntries(snapshot.players.map((player) => [player.key, player])),
-    updatedAt: new Date().toISOString()
-  });
 }
 
 async function handleOnlineSnapshot(env, adapter, state, snapshot) {
@@ -321,8 +301,7 @@ function buildStatusEmbed({ env, adapter, mode, snapshot = null, state = {} }) {
   };
 }
 
-async function readCachedSnapshot(env, adapter) {
-  const state = await readState(env);
+function readCachedSnapshotFromState(state, adapter) {
   if (state.gameProvider !== adapter.id || !state.lastSnapshot) {
     return null;
   }
