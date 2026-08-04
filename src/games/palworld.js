@@ -78,12 +78,21 @@ async function optionalPalworldRequest(env, path) {
 async function palworldRequest(env, path) {
   const baseUrl = `http://${env.PALWORLD_HOST}:${env.PALWORLD_PORT}/v1/api`;
   const auth = btoa(`${env.PALWORLD_USERNAME}:${env.PALWORLD_PASSWORD}`);
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Basic ${auth}`
-    }
-  });
+  let response;
+
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Basic ${auth}`
+      }
+    });
+  } catch (error) {
+    const wrapped = new Error(`Network fetch failed for Palworld ${path}`);
+    wrapped.code = error?.name || 'FetchError';
+    wrapped.cause = error;
+    throw wrapped;
+  }
 
   if (!response.ok) {
     const error = new Error(`Palworld REST returned HTTP ${response.status}`);

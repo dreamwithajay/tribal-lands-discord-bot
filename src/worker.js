@@ -22,6 +22,9 @@ export default {
           discordPublicKey: Boolean(env.DISCORD_PUBLIC_KEY),
           discordToken: Boolean(env.DISCORD_TOKEN),
           discordChannelId: Boolean(env.DISCORD_CHANNEL_ID),
+          palworldHost: Boolean(env.PALWORLD_HOST),
+          palworldPort: Boolean(env.PALWORLD_PORT),
+          palworldUsername: Boolean(env.PALWORLD_USERNAME),
           palworldPassword: Boolean(env.PALWORLD_PASSWORD)
         }
       });
@@ -165,6 +168,7 @@ async function handlePollFailure(env, adapter, state, error) {
     gameLabel: adapter.label,
     failureCount,
     offlineSince,
+    lastError: summarizeError(error),
     updatedAt: new Date().toISOString()
   };
 
@@ -309,7 +313,8 @@ function buildStatusEmbed({ env, adapter, mode, snapshot = null, state = {} }) {
     fields: [
       { name: 'Game', value: adapter.label, inline: true },
       { name: 'Failed checks', value: String(state.failureCount ?? 0), inline: true },
-      { name: 'Last good check', value: formatDiscordTimestamp(state.lastSnapshot?.fetchedAt), inline: true }
+      { name: 'Last good check', value: formatDiscordTimestamp(state.lastSnapshot?.fetchedAt), inline: true },
+      { name: 'Last error', value: formatErrorForDiscord(state.lastError), inline: false }
     ],
     footer: { text: STATUS_FOOTER }
   };
@@ -356,6 +361,26 @@ function formatPlayersResponse(env, adapter, snapshot) {
   }
 
   return renderTemplate(adapter.copy.noPlayers, { server: serverName(env) });
+}
+
+function summarizeError(error) {
+  return {
+    message: String(error?.message ?? 'Unknown error').slice(0, 180),
+    status: error?.status ?? null,
+    code: error?.code ?? error?.name ?? null,
+    at: new Date().toISOString()
+  };
+}
+
+function formatErrorForDiscord(error) {
+  if (!error) {
+    return 'Unknown';
+  }
+
+  const parts = [error.status ? `HTTP ${error.status}` : null, error.code, error.message]
+    .filter(Boolean)
+    .join(' - ');
+  return parts.slice(0, 1024);
 }
 
 async function sendChannelMessage(env, content, extra = {}) {

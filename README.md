@@ -25,6 +25,9 @@ Copy `.env.example` to `.env` for local command registration and set these as Cl
 DISCORD_TOKEN=
 DISCORD_CHANNEL_ID=
 DISCORD_PUBLIC_KEY=
+PALWORLD_HOST=
+PALWORLD_PORT=
+PALWORLD_USERNAME=
 PALWORLD_PASSWORD=
 ```
 
@@ -44,6 +47,8 @@ OFFLINE_FAILURE_THRESHOLD=2
 ```
 
 `STATUS_MESSAGE_ID` is optional. If omitted, the Worker creates one and stores its ID in Worker KV.
+
+For Cloudflare, set `PALWORLD_HOST` in the dashboard to the DNS hostname, not the raw IP, if you created a Namecheap record.
 
 ## Switching Games Later
 
