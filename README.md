@@ -2,7 +2,7 @@
 
 Phase 1 Discord companion for The Tribal Lands game server.
 
-It currently monitors the Palworld REST API at `135.148.100.61:25586`, keeps one Discord status message updated, sends Tribal Lands-themed join/leave notices, detects outages and recovery, and handles `/status` plus `/players`.
+It currently monitors the Palworld REST API, keeps one Discord status message updated, sends Tribal Lands-themed join/leave notices, detects outages and recovery, and handles `/status`, `/players`, `/server`, and `/help`.
 
 ## Features
 
@@ -10,7 +10,8 @@ It currently monitors the Palworld REST API at `135.148.100.61:25586`, keeps one
 - Player join and leave notifications
 - Offline/crash detection after repeated failed checks
 - Recovery notification with approximate downtime
-- Slash commands: `/status` and `/players`
+- Slash commands: `/status`, `/players`, `/server`, and `/help`
+- Rotating Signal line in the persistent status panel
 - Game-provider adapter structure, starting with Palworld
 - Polling can be paused without deleting the Discord bot setup
 - Cloudflare Workers Free runtime
@@ -80,6 +81,12 @@ When the server changes to another game, add a new adapter in `src/games/`, regi
 The scheduled monitor compares the latest player list to the previous successful check. It sends a message only when players actually join or leave, so the channel should not get spammed every minute.
 
 Because Cloudflare Free cron runs once per minute, notices can be delayed by up to about a minute.
+
+## Discord Presence
+
+Cloudflare Workers cannot keep a Discord gateway connection open, so they cannot update the bot user's native Discord activity text like `Watching 1/8 players`.
+
+Instead, the persistent status panel has a rotating `Signal` line that changes each scheduled check.
 
 ## Discord Setup
 

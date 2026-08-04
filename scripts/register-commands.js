@@ -20,6 +20,16 @@ const commands = [
     name: 'players',
     description: `Show who is currently in ${serverName}.`,
     type: 1
+  },
+  {
+    name: 'server',
+    description: `Show ${serverName} game and monitor details.`,
+    type: 1
+  },
+  {
+    name: 'help',
+    description: `Show ${serverName} bot commands.`,
+    type: 1
   }
 ];
 
@@ -39,4 +49,4 @@ if (!response.ok) {
   throw new Error(`Discord command registration failed: ${response.status} ${await response.text()}`);
 }
 
-console.log(`Registered /status and /players for ${serverName}.`);
+console.log(`Registered /status, /players, /server, and /help for ${serverName}.`);

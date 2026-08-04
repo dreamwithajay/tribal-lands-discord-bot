@@ -7,6 +7,12 @@ const STATUS_FOOTER = 'tribal-lands-status';
 const ONLINE_COLOR = 0x2f855a;
 const OFFLINE_COLOR = 0xc53030;
 const UNKNOWN_COLOR = 0x718096;
+const ACTIVITY_LINES = [
+  ({ snapshot }) => `Watching ${snapshot.currentPlayers}${snapshot.maxPlayers ? ` / ${snapshot.maxPlayers}` : ''} online`,
+  ({ snapshot, adapter }) => `${adapter.label}${snapshot.version ? ` ${snapshot.version}` : ''}`,
+  ({ snapshot }) => `Last camp check ${formatDiscordTimestamp(snapshot.fetchedAt)}`,
+  ({ env }) => `${serverName(env)} signal is steady`
+];
 
 export default {
   async fetch(request, env) {
@@ -80,7 +86,7 @@ async function handleCommand(interaction, env) {
     const cached = readCachedSnapshotFromState(state, adapter);
 
     if (cached) {
-      return interactionResponse('', [buildStatusEmbed({ env, adapter, mode: 'online', snapshot: cached })]);
+      return interactionResponse('', [buildStatusEmbed({ env, adapter, mode: 'online', snapshot: cached, state })]);
     }
 
     if (state.gameProvider === adapter.id && state.failureCount > 0) {
@@ -99,6 +105,17 @@ async function handleCommand(interaction, env) {
     }
 
     return interactionResponse(`${serverName(env)} is waiting for its first scheduled check.`);
+  }
+
+  if (command === 'server') {
+    const state = await readState(env);
+    const cached = readCachedSnapshotFromState(state, adapter);
+
+    return interactionResponse('', [buildServerEmbed({ env, adapter, snapshot: cached, state })]);
+  }
+
+  if (command === 'help') {
+    return interactionResponse('', [buildHelpEmbed({ env })]);
   }
 
   return interactionResponse(`Unknown command.`);
@@ -143,6 +160,7 @@ async function handleOnlineSnapshot(env, adapter, state, snapshot) {
     ...state,
     gameProvider: adapter.id,
     gameLabel: adapter.label,
+    statusPulseIndex: nextPulseIndex(state),
     failureCount: 0,
     offlineSince: null,
     offlineAnnounced: false,
@@ -239,7 +257,8 @@ async function updateStatusMessage(env, adapter, state, snapshot, { force = fals
         adapter.id,
         'online',
         snapshot.version,
-        snapshot.players.map((player) => player.key).sort().join(',')
+        snapshot.players.map((player) => player.key).sort().join(','),
+        state.statusPulseIndex ?? 0
       ].join('|')
     : `${adapter.id}|${mode}|${state.failureCount ?? 0}`;
 
@@ -249,7 +268,7 @@ async function updateStatusMessage(env, adapter, state, snapshot, { force = fals
 
   const messageId = state.statusMessageId || env.STATUS_MESSAGE_ID;
   const embed = snapshot
-    ? buildStatusEmbed({ env, adapter, mode: 'online', snapshot })
+    ? buildStatusEmbed({ env, adapter, mode: 'online', snapshot, state })
     : buildStatusEmbed({ env, adapter, mode, state });
 
   if (messageId) {
@@ -284,6 +303,7 @@ function buildStatusEmbed({ env, adapter, mode, snapshot = null, state = {} }) {
         { name: 'Game', value: adapter.label, inline: true },
         { name: 'Version', value: snapshot.version ?? 'Unknown', inline: true },
         { name: 'Players', value: capacity, inline: true },
+        { name: 'Signal', value: activityLine({ env, adapter, snapshot, state }), inline: false },
         { name: adapter.copy.playersLabel, value: playerText.slice(0, 1024), inline: false },
         { name: 'Last check', value: formatDiscordTimestamp(snapshot.fetchedAt), inline: true }
       ],
@@ -318,6 +338,54 @@ function buildStatusEmbed({ env, adapter, mode, snapshot = null, state = {} }) {
   };
 }
 
+function buildServerEmbed({ env, adapter, snapshot, state }) {
+  if (!snapshot) {
+    return {
+      title: `${serverName(env)} Server`,
+      color: state.failureCount > 0 ? OFFLINE_COLOR : UNKNOWN_COLOR,
+      description: state.failureCount > 0 ? adapter.copy.offlineDescription : 'Waiting for the first scheduled check.',
+      fields: [
+        { name: 'Game', value: adapter.label, inline: true },
+        { name: 'Monitor', value: pollingEnabled(env) ? 'Enabled' : 'Paused', inline: true },
+        { name: 'Failed checks', value: String(state.failureCount ?? 0), inline: true },
+        { name: 'Last error', value: formatErrorForDiscord(state.lastError), inline: false }
+      ],
+      footer: { text: STATUS_FOOTER }
+    };
+  }
+
+  const capacity = snapshot.maxPlayers
+    ? `${snapshot.currentPlayers} / ${snapshot.maxPlayers}`
+    : String(snapshot.currentPlayers);
+
+  return {
+    title: `${serverName(env)} Server`,
+    color: ONLINE_COLOR,
+    fields: [
+      { name: 'Game', value: adapter.label, inline: true },
+      { name: 'Version', value: snapshot.version ?? 'Unknown', inline: true },
+      { name: 'Players', value: capacity, inline: true },
+      { name: 'Monitor', value: pollingEnabled(env) ? 'Enabled' : 'Paused', inline: true },
+      { name: 'Last check', value: formatDiscordTimestamp(snapshot.fetchedAt), inline: true }
+    ],
+    footer: { text: STATUS_FOOTER }
+  };
+}
+
+function buildHelpEmbed({ env }) {
+  return {
+    title: `${serverName(env)} Commands`,
+    color: UNKNOWN_COLOR,
+    fields: [
+      { name: '/status', value: 'Show the current server panel.', inline: false },
+      { name: '/players', value: 'Show who is online.', inline: false },
+      { name: '/server', value: 'Show game, version, monitor, and last-check details.', inline: false },
+      { name: '/help', value: 'Show this command list.', inline: false }
+    ],
+    footer: { text: STATUS_FOOTER }
+  };
+}
+
 function buildPlayersEmbed({ env, adapter, snapshot }) {
   const names = snapshot.players.map((player) => player.displayName);
   const capacity = snapshot.maxPlayers
@@ -338,6 +406,16 @@ function buildPlayersEmbed({ env, adapter, snapshot }) {
     ],
     footer: { text: STATUS_FOOTER }
   };
+}
+
+function nextPulseIndex(state) {
+  return ((state.statusPulseIndex ?? -1) + 1) % ACTIVITY_LINES.length;
+}
+
+function activityLine({ env, adapter, snapshot, state }) {
+  const index = state.statusPulseIndex ?? 0;
+  const template = ACTIVITY_LINES[index % ACTIVITY_LINES.length];
+  return template({ env, adapter, snapshot });
 }
 
 function readCachedSnapshotFromState(state, adapter) {
