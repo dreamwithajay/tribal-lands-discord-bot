@@ -61,8 +61,15 @@ async function handleCommand(interaction, env) {
   if (command === 'status') {
     try {
       const snapshot = await adapter.fetchSnapshot(env);
+      await cacheCommandSnapshot(env, adapter, snapshot);
       return interactionResponse('', [buildStatusEmbed({ env, adapter, mode: 'online', snapshot })]);
-    } catch {
+    } catch (error) {
+      console.warn('Live status command failed', error);
+      const cached = await readCachedSnapshot(env, adapter);
+      if (cached) {
+        return interactionResponse('', [buildStatusEmbed({ env, adapter, mode: 'online', snapshot: cached })]);
+      }
+
       return interactionResponse(renderTemplate(adapter.copy.unreachable, { server: serverName(env) }));
     }
   }
@@ -70,13 +77,15 @@ async function handleCommand(interaction, env) {
   if (command === 'players') {
     try {
       const snapshot = await adapter.fetchSnapshot(env);
-      const names = snapshot.players.map((player) => player.displayName);
-      const content =
-        names.length > 0
-          ? renderTemplate(adapter.copy.currentPlayers, { server: serverName(env), players: names.join(', ') })
-          : renderTemplate(adapter.copy.noPlayers, { server: serverName(env) });
-      return interactionResponse(content);
-    } catch {
+      await cacheCommandSnapshot(env, adapter, snapshot);
+      return interactionResponse(formatPlayersResponse(env, adapter, snapshot));
+    } catch (error) {
+      console.warn('Live players command failed', error);
+      const cached = await readCachedSnapshot(env, adapter);
+      if (cached) {
+        return interactionResponse(`${formatPlayersResponse(env, adapter, cached)} Last check: ${formatDiscordTimestamp(cached.fetchedAt)}.`);
+      }
+
       return interactionResponse(renderTemplate(adapter.copy.cannotReach, { server: serverName(env) }));
     }
   }
@@ -98,6 +107,22 @@ async function runMonitor(env) {
   } catch (error) {
     await handlePollFailure(env, adapter, state, error);
   }
+}
+
+async function cacheCommandSnapshot(env, adapter, snapshot) {
+  const state = await readState(env);
+  await writeState(env, {
+    ...state,
+    gameProvider: adapter.id,
+    gameLabel: adapter.label,
+    failureCount: 0,
+    offlineSince: null,
+    offlineAnnounced: false,
+    authFailureAnnounced: false,
+    lastSnapshot: serializeSnapshot(adapter, snapshot),
+    lastPlayerMap: Object.fromEntries(snapshot.players.map((player) => [player.key, player])),
+    updatedAt: new Date().toISOString()
+  });
 }
 
 async function handleOnlineSnapshot(env, adapter, state, snapshot) {
@@ -127,16 +152,7 @@ async function handleOnlineSnapshot(env, adapter, state, snapshot) {
     offlineSince: null,
     offlineAnnounced: false,
     authFailureAnnounced: false,
-    lastSnapshot: {
-      fetchedAt: snapshot.fetchedAt.toISOString(),
-      players: snapshot.players,
-      info: snapshot.info,
-      gameProvider: adapter.id,
-      gameLabel: adapter.label,
-      version: snapshot.version,
-      currentPlayers: snapshot.currentPlayers,
-      maxPlayers: snapshot.maxPlayers
-    },
+    lastSnapshot: serializeSnapshot(adapter, snapshot),
     lastPlayerMap: Object.fromEntries(snapshot.players.map((player) => [player.key, player])),
     updatedAt: new Date().toISOString()
   };
@@ -303,6 +319,50 @@ function buildStatusEmbed({ env, adapter, mode, snapshot = null, state = {} }) {
     ],
     footer: { text: STATUS_FOOTER }
   };
+}
+
+async function readCachedSnapshot(env, adapter) {
+  const state = await readState(env);
+  if (state.gameProvider !== adapter.id || !state.lastSnapshot) {
+    return null;
+  }
+
+  return deserializeSnapshot(state.lastSnapshot);
+}
+
+function serializeSnapshot(adapter, snapshot) {
+  return {
+    fetchedAt: snapshot.fetchedAt.toISOString(),
+    players: snapshot.players,
+    info: snapshot.info,
+    gameProvider: adapter.id,
+    gameLabel: adapter.label,
+    version: snapshot.version,
+    currentPlayers: snapshot.currentPlayers,
+    maxPlayers: snapshot.maxPlayers
+  };
+}
+
+function deserializeSnapshot(snapshot) {
+  return {
+    ...snapshot,
+    fetchedAt: new Date(snapshot.fetchedAt),
+    players: Array.isArray(snapshot.players) ? snapshot.players : [],
+    currentPlayers: Number(snapshot.currentPlayers ?? snapshot.players?.length ?? 0),
+    maxPlayers: snapshot.maxPlayers ?? null
+  };
+}
+
+function formatPlayersResponse(env, adapter, snapshot) {
+  const names = snapshot.players.map((player) => player.displayName);
+  if (names.length > 0) {
+    return renderTemplate(adapter.copy.currentPlayers, {
+      server: serverName(env),
+      players: names.join(', ')
+    });
+  }
+
+  return renderTemplate(adapter.copy.noPlayers, { server: serverName(env) });
 }
 
 async function sendChannelMessage(env, content, extra = {}) {
