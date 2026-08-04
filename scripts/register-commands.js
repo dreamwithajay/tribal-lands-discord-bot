@@ -10,6 +10,7 @@ for (const name of required) {
 }
 
 const serverName = process.env.SERVER_DISPLAY_NAME || 'The Tribal Lands';
+const discordToken = process.env.DISCORD_TOKEN.replace(/^Bot\s+/i, '').trim();
 const commands = [
   {
     name: 'status',
@@ -38,7 +39,7 @@ const response = await fetch(
   {
     method: 'PUT',
     headers: {
-      Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
+      Authorization: `Bot ${discordToken}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(commands)
@@ -46,6 +47,12 @@ const response = await fetch(
 );
 
 if (!response.ok) {
+  if (response.status === 401) {
+    throw new Error(
+      'Discord command registration failed: 401 Unauthorized. Check DISCORD_TOKEN in your local .env. Use the Bot token only, without a leading "Bot " prefix.'
+    );
+  }
+
   throw new Error(`Discord command registration failed: ${response.status} ${await response.text()}`);
 }
 
