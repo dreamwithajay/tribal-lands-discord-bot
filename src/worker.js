@@ -95,9 +95,7 @@ async function handleCommand(interaction, env) {
     const cached = readCachedSnapshotFromState(state, adapter);
 
     if (cached) {
-      return interactionResponse(
-        `${formatPlayersResponse(env, adapter, cached)} Last check: ${formatDiscordTimestamp(cached.fetchedAt)}.`
-      );
+      return interactionResponse('', [buildPlayersEmbed({ env, adapter, snapshot: cached })]);
     }
 
     return interactionResponse(`${serverName(env)} is waiting for its first scheduled check.`);
@@ -320,6 +318,28 @@ function buildStatusEmbed({ env, adapter, mode, snapshot = null, state = {} }) {
   };
 }
 
+function buildPlayersEmbed({ env, adapter, snapshot }) {
+  const names = snapshot.players.map((player) => player.displayName);
+  const capacity = snapshot.maxPlayers
+    ? `${snapshot.currentPlayers} / ${snapshot.maxPlayers}`
+    : String(snapshot.currentPlayers);
+  const description =
+    names.length > 0
+      ? names.map((name) => `- ${name}`).join('\n')
+      : adapter.copy.empty;
+
+  return {
+    title: `${serverName(env)} Players`,
+    color: ONLINE_COLOR,
+    fields: [
+      { name: 'Online', value: capacity, inline: true },
+      { name: 'Last check', value: formatDiscordTimestamp(snapshot.fetchedAt), inline: true },
+      { name: adapter.copy.playersLabel, value: description.slice(0, 1024), inline: false }
+    ],
+    footer: { text: STATUS_FOOTER }
+  };
+}
+
 function readCachedSnapshotFromState(state, adapter) {
   if (state.gameProvider !== adapter.id || !state.lastSnapshot) {
     return null;
@@ -349,18 +369,6 @@ function deserializeSnapshot(snapshot) {
     currentPlayers: Number(snapshot.currentPlayers ?? snapshot.players?.length ?? 0),
     maxPlayers: snapshot.maxPlayers ?? null
   };
-}
-
-function formatPlayersResponse(env, adapter, snapshot) {
-  const names = snapshot.players.map((player) => player.displayName);
-  if (names.length > 0) {
-    return renderTemplate(adapter.copy.currentPlayers, {
-      server: serverName(env),
-      players: names.join(', ')
-    });
-  }
-
-  return renderTemplate(adapter.copy.noPlayers, { server: serverName(env) });
 }
 
 function summarizeError(error) {

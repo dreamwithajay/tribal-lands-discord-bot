@@ -75,6 +75,12 @@ GAME_PROVIDER=none
 
 When the server changes to another game, add a new adapter in `src/games/`, register it in `src/games/index.js`, then set `GAME_PROVIDER` to that adapter name.
 
+## Join and Leave Notices
+
+The scheduled monitor compares the latest player list to the previous successful check. It sends a message only when players actually join or leave, so the channel should not get spammed every minute.
+
+Because Cloudflare Free cron runs once per minute, notices can be delayed by up to about a minute.
+
 ## Discord Setup
 
 1. Open the Discord Developer Portal and create an application.
