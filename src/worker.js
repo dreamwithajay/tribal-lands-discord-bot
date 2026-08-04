@@ -16,7 +16,14 @@ export default {
         ok: true,
         name: serverName(env),
         gameProvider: adapter?.id ?? 'none',
-        pollingEnabled: pollingEnabled(env)
+        pollingEnabled: pollingEnabled(env),
+        diagnostics: {
+          stateBinding: Boolean(env.STATE),
+          discordPublicKey: Boolean(env.DISCORD_PUBLIC_KEY),
+          discordToken: Boolean(env.DISCORD_TOKEN),
+          discordChannelId: Boolean(env.DISCORD_CHANNEL_ID),
+          palworldPassword: Boolean(env.PALWORLD_PASSWORD)
+        }
       });
     }
 
@@ -40,7 +47,14 @@ export default {
       return interactionResponse(`I do not know how to answer that yet.`);
     }
 
-    return handleCommand(interaction, env);
+    try {
+      return await handleCommand(interaction, env);
+    } catch (error) {
+      console.error('Interaction handler failed', error);
+      return interactionResponse(
+        `${serverName(env)} bot hit a setup issue. Check Cloudflare Worker logs for the latest error.`
+      );
+    }
   },
 
   async scheduled(_controller, env, ctx) {
@@ -380,10 +394,20 @@ async function discordRequest(env, path, { method, body }) {
 }
 
 async function readState(env) {
+  if (!env.STATE) {
+    console.warn('STATE KV binding is missing');
+    return {};
+  }
+
   return (await env.STATE.get(STATE_KEY, 'json')) ?? {};
 }
 
 async function writeState(env, state) {
+  if (!env.STATE) {
+    console.warn('STATE KV binding is missing; state was not saved');
+    return;
+  }
+
   await env.STATE.put(STATE_KEY, JSON.stringify(state));
 }
 
