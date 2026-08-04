@@ -82,10 +82,10 @@ function onlineActivityLine({ adapter, snapshot }) {
   ]);
   const lines = [
     { name: `Online - ${count} survivors`, type: ActivityType.Watching },
-    { name: `${serverName()} - online`, type: ActivityType.Playing },
-    { name: `${adapter.label}${snapshot.version ? ` ${snapshot.version}` : ''}`, type: ActivityType.Watching },
-    fps ? { name: `Server FPS ${Math.round(fps)}`, type: ActivityType.Watching } : null,
-    uptime ? { name: `Uptime ${formatDuration(uptime * 1000)}`, type: ActivityType.Watching } : null
+    { name: `Online - ${count} in ${serverName()}`, type: ActivityType.Playing },
+    { name: `Online - ${adapter.label}${snapshot.version ? ` ${snapshot.version}` : ''}`, type: ActivityType.Watching },
+    fps ? { name: `Online - FPS ${Math.round(fps)} - ${count}`, type: ActivityType.Watching } : null,
+    uptime ? { name: `Online - ${formatDuration(uptime * 1000)} uptime`, type: ActivityType.Watching } : null
   ].filter(Boolean);
 
   return lines[pulseIndex(lines.length)];
