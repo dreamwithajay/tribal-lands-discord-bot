@@ -303,9 +303,19 @@ async function updateStatusMessage(env, adapter, state, snapshot, { force = fals
     : buildStatusEmbed({ env, adapter, mode, state });
 
   if (messageId) {
-    const edited = await editChannelMessage(env, messageId, { embeds: [embed] });
-    if (edited?.id) {
-      state.statusMessageId = edited.id;
+    try {
+      const edited = await editChannelMessage(env, messageId, { embeds: [embed] });
+      if (edited?.id) {
+        state.statusMessageId = edited.id;
+      }
+    } catch (error) {
+      if (!isRecoverableStatusMessageError(error)) {
+        throw error;
+      }
+
+      console.warn('Stored status message could not be edited; creating a new status message', error);
+      const created = await sendStatusMessage(env, '', { embeds: [embed] });
+      state.statusMessageId = created.id;
     }
   } else {
     const created = await sendStatusMessage(env, '', { embeds: [embed] });
@@ -573,10 +583,17 @@ async function discordRequest(env, path, { method, body }) {
 
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(`Discord API ${response.status}: ${message}`);
+    const error = new Error(`Discord API ${response.status}: ${message}`);
+    error.status = response.status;
+    error.detail = message;
+    throw error;
   }
 
   return response.json();
+}
+
+function isRecoverableStatusMessageError(error) {
+  return [403, 404].includes(error?.status);
 }
 
 async function readState(env) {
