@@ -1,0 +1,7 @@
+services:
+  tribal-lands-bot:
+    build: .
+    container_name: tribal-lands-discord-bot
+    restart: unless-stopped
+    env_file:
+      - .env
