@@ -7,7 +7,7 @@ It currently monitors the Palworld REST API, keeps one Discord status message up
 ## Features
 
 - Persistent status embed edited in place
-- Player join and leave notifications
+- Optional separate channel for player join/leave and server event notifications
 - Offline/crash detection after repeated failed checks
 - Recovery notification with approximate downtime
 - Slash commands: `/status`, `/players`, `/server`, `/help`, and admin-only `/restart`
@@ -26,6 +26,7 @@ Copy `.env.example` to `.env` for local command registration and set these as Cl
 ```bash
 DISCORD_TOKEN=
 DISCORD_CHANNEL_ID=
+DISCORD_NOTIFICATIONS_CHANNEL_ID=
 DISCORD_PUBLIC_KEY=
 PALWORLD_HOST=
 PALWORLD_PORT=
@@ -38,6 +39,8 @@ DISCORD_ADMIN_ROLE_ID=
 ```
 
 `DISCORD_CLIENT_ID` and `DISCORD_GUILD_ID` are needed locally for `npm run register`; the Worker itself does not need them at runtime.
+
+`DISCORD_CHANNEL_ID` is the persistent status panel channel. `DISCORD_NOTIFICATIONS_CHANNEL_ID` is optional; if omitted, join/leave/offline/recovery/restart notices use `DISCORD_CHANNEL_ID`.
 
 Defaults are already set for:
 
@@ -110,10 +113,11 @@ The presence service rotates online activity lines with player count, game/versi
 3. Copy the application ID into `DISCORD_CLIENT_ID`.
 4. Copy the public key into `DISCORD_PUBLIC_KEY`.
 5. In Discord, enable Developer Mode, then copy your Discord server ID into `DISCORD_GUILD_ID`.
-6. Copy the target channel ID into `DISCORD_CHANNEL_ID`.
-7. Invite the bot with the `bot` and `applications.commands` scopes.
-8. Give the bot these channel permissions: View Channel, Send Messages, Embed Links, and Read Message History.
-9. Set the Discord Interactions Endpoint URL to the deployed Cloudflare Worker URL.
+6. Copy the status panel channel ID into `DISCORD_CHANNEL_ID`.
+7. Optionally copy a separate event feed channel ID into `DISCORD_NOTIFICATIONS_CHANNEL_ID`.
+8. Invite the bot with the `bot` and `applications.commands` scopes.
+9. Give the bot these channel permissions in both channels: View Channel, Send Messages, Embed Links, and Read Message History.
+10. Set the Discord Interactions Endpoint URL to the deployed Cloudflare Worker URL.
 
 ## Deploy
 

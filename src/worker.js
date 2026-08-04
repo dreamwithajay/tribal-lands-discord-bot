@@ -29,6 +29,7 @@ export default {
           discordPublicKey: Boolean(env.DISCORD_PUBLIC_KEY),
           discordToken: Boolean(env.DISCORD_TOKEN),
           discordChannelId: Boolean(env.DISCORD_CHANNEL_ID),
+          discordNotificationsChannelId: Boolean(env.DISCORD_NOTIFICATIONS_CHANNEL_ID),
           palworldHost: Boolean(env.PALWORLD_HOST),
           palworldPort: Boolean(env.PALWORLD_PORT),
           palworldUsername: Boolean(env.PALWORLD_USERNAME),
@@ -143,7 +144,7 @@ async function handleRestartCommand(interaction, env) {
       result.mode === 'schedule'
         ? 'BerryByte automation has been triggered.'
         : 'Restart signal has been sent to the server panel.';
-    await sendChannelMessage(env, `${serverName(env)} restart requested by ${interaction.member?.user?.username ?? 'an admin'}. ${suffix}`);
+    await sendNotificationMessage(env, `${serverName(env)} restart requested by ${interaction.member?.user?.username ?? 'an admin'}. ${suffix}`);
     return interactionResponse(`${serverName(env)} restart started. ${suffix}`);
   } catch (error) {
     console.error('Restart command failed', error);
@@ -173,7 +174,7 @@ async function handleOnlineSnapshot(env, adapter, state, snapshot) {
   const downtimeMs = state.offlineSince ? Date.now() - new Date(state.offlineSince).getTime() : null;
 
   if (recovered) {
-    await sendChannelMessage(
+    await sendNotificationMessage(
       env,
       renderTemplate(adapter.copy.recovered, {
         server: serverName(env),
@@ -220,12 +221,12 @@ async function handlePollFailure(env, adapter, state, error) {
 
   if (isAuthError && !state.authFailureAnnounced) {
     nextState.authFailureAnnounced = true;
-    await sendChannelMessage(env, renderTemplate(adapter.copy.credentialRejected, { server: serverName(env) }));
+    await sendNotificationMessage(env, renderTemplate(adapter.copy.credentialRejected, { server: serverName(env) }));
   }
 
   if (!isAuthError && failureCount >= offlineFailureThreshold(env) && !state.offlineAnnounced) {
     nextState.offlineAnnounced = true;
-    await sendChannelMessage(
+    await sendNotificationMessage(
       env,
       renderTemplate(adapter.copy.offline, {
         server: serverName(env),
@@ -252,31 +253,31 @@ async function sendPlayerDiffs(env, adapter, state, snapshot) {
   const left = [...previous.values()].filter((player) => !current.has(player.key));
 
   if (joined.length === 1) {
-    await sendChannelMessage(
+    await sendNotificationMessage(
       env,
       renderTemplate(pick(adapter.joinLines), { player: joined[0].displayName, server: serverName(env) })
     );
   } else if (joined.length > 1) {
-    await sendChannelMessage(
+    await sendNotificationMessage(
       env,
       renderTemplate(adapter.copy.multiJoin, { server: serverName(env), players: formatNames(joined) })
     );
   }
 
   if (left.length === 1) {
-    await sendChannelMessage(
+    await sendNotificationMessage(
       env,
       renderTemplate(pick(adapter.leaveLines), { player: left[0].displayName, server: serverName(env) })
     );
   } else if (left.length > 1) {
-    await sendChannelMessage(
+    await sendNotificationMessage(
       env,
       renderTemplate(adapter.copy.multiLeave, { server: serverName(env), players: formatNames(left) })
     );
   }
 
   if (snapshot.players.length === 0 && left.length > 0) {
-    await sendChannelMessage(env, renderTemplate(adapter.copy.emptyAfterLeave, { server: serverName(env) }));
+    await sendNotificationMessage(env, renderTemplate(adapter.copy.emptyAfterLeave, { server: serverName(env) }));
   }
 }
 
@@ -307,7 +308,7 @@ async function updateStatusMessage(env, adapter, state, snapshot, { force = fals
       state.statusMessageId = edited.id;
     }
   } else {
-    const created = await sendChannelMessage(env, '', { embeds: [embed] });
+    const created = await sendStatusMessage(env, '', { embeds: [embed] });
     state.statusMessageId = created.id;
   }
 
@@ -527,8 +528,16 @@ function isAuthorizedAdmin(interaction, env) {
   return false;
 }
 
-async function sendChannelMessage(env, content, extra = {}) {
-  return discordRequest(env, `/channels/${env.DISCORD_CHANNEL_ID}/messages`, {
+async function sendStatusMessage(env, content, extra = {}) {
+  return sendDiscordChannelMessage(env, statusChannelId(env), content, extra);
+}
+
+async function sendNotificationMessage(env, content, extra = {}) {
+  return sendDiscordChannelMessage(env, notificationChannelId(env), content, extra);
+}
+
+async function sendDiscordChannelMessage(env, channelId, content, extra = {}) {
+  return discordRequest(env, `/channels/${channelId}/messages`, {
     method: 'POST',
     body: {
       content,
@@ -538,10 +547,18 @@ async function sendChannelMessage(env, content, extra = {}) {
 }
 
 async function editChannelMessage(env, messageId, body) {
-  return discordRequest(env, `/channels/${env.DISCORD_CHANNEL_ID}/messages/${messageId}`, {
+  return discordRequest(env, `/channels/${statusChannelId(env)}/messages/${messageId}`, {
     method: 'PATCH',
     body
   });
+}
+
+function statusChannelId(env) {
+  return env.DISCORD_CHANNEL_ID;
+}
+
+function notificationChannelId(env) {
+  return env.DISCORD_NOTIFICATIONS_CHANNEL_ID || env.DISCORD_CHANNEL_ID;
 }
 
 async function discordRequest(env, path, { method, body }) {

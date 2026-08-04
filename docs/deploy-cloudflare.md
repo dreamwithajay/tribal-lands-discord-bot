@@ -39,6 +39,7 @@ The repo also sets `keep_vars = true` so GitHub deploys keep dashboard-created v
 ```bash
 npx wrangler secret put DISCORD_TOKEN
 npx wrangler secret put DISCORD_CHANNEL_ID
+npx wrangler secret put DISCORD_NOTIFICATIONS_CHANNEL_ID
 npx wrangler secret put DISCORD_PUBLIC_KEY
 npx wrangler secret put PALWORLD_HOST
 npx wrangler secret put PALWORLD_PORT
