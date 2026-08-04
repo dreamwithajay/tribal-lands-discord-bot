@@ -7,13 +7,15 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "presence": "node src/presence.js",
     "register": "node scripts/register-commands.js",
-    "check": "node --check src/worker.js && node --check src/games/index.js && node --check src/games/palworld.js && node --check scripts/register-commands.js"
+    "check": "node --check src/worker.js && node --check src/presence.js && node --check src/games/index.js && node --check src/games/palworld.js && node --check scripts/register-commands.js"
   },
   "engines": {
     "node": ">=20.9.0"
   },
   "dependencies": {
+    "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",
     "tweetnacl": "^1.0.3"
   },

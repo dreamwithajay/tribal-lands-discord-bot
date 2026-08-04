@@ -12,6 +12,7 @@ It currently monitors the Palworld REST API, keeps one Discord status message up
 - Recovery notification with approximate downtime
 - Slash commands: `/status`, `/players`, `/server`, and `/help`
 - Rotating Signal line in the persistent status panel
+- Optional Google Compute presence service for native Discord online/activity status
 - Game-provider adapter structure, starting with Palworld
 - Polling can be paused without deleting the Discord bot setup
 - Cloudflare Workers Free runtime
@@ -87,6 +88,14 @@ Because Cloudflare Free cron runs once per minute, notices can be delayed by up 
 Cloudflare Workers cannot keep a Discord gateway connection open, so they cannot update the bot user's native Discord activity text like `Watching 1/8 players`.
 
 Instead, the persistent status panel has a rotating `Signal` line that changes each scheduled check.
+
+For true native Discord online/activity status, run the optional presence service on an always-on VM:
+
+```bash
+npm run presence
+```
+
+See [docs/deploy-google-compute-presence.md](docs/deploy-google-compute-presence.md).
 
 ## Discord Setup
 
