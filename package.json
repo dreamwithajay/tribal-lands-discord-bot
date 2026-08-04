@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy",
     "presence": "node src/presence.js",
     "register": "node scripts/register-commands.js",
-    "check": "node --check src/worker.js && node --check src/presence.js && node --check src/games/index.js && node --check src/games/palworld.js && node --check scripts/register-commands.js"
+    "check": "node --check src/worker.js && node --check src/presence.js && node --check src/games/index.js && node --check src/games/palworld.js && node --check src/panel/pterodactyl.js && node --check scripts/register-commands.js"
   },
   "engines": {
     "node": ">=20.9.0"

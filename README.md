@@ -2,7 +2,7 @@
 
 Phase 1 Discord companion for The Tribal Lands game server.
 
-It currently monitors the Palworld REST API, keeps one Discord status message updated, sends Tribal Lands-themed join/leave notices, detects outages and recovery, and handles `/status`, `/players`, `/server`, and `/help`.
+It currently monitors the Palworld REST API, keeps one Discord status message updated, sends Tribal Lands-themed join/leave notices, detects outages and recovery, and handles `/status`, `/players`, `/server`, `/help`, and admin-only `/restart`.
 
 ## Features
 
@@ -10,7 +10,7 @@ It currently monitors the Palworld REST API, keeps one Discord status message up
 - Player join and leave notifications
 - Offline/crash detection after repeated failed checks
 - Recovery notification with approximate downtime
-- Slash commands: `/status`, `/players`, `/server`, and `/help`
+- Slash commands: `/status`, `/players`, `/server`, `/help`, and admin-only `/restart`
 - Rotating Signal line in the persistent status panel
 - Optional Google Compute presence service for native Discord online/activity status
 - Game-provider adapter structure, starting with Palworld
@@ -31,6 +31,10 @@ PALWORLD_HOST=
 PALWORLD_PORT=
 PALWORLD_USERNAME=
 PALWORLD_PASSWORD=
+PTERODACTYL_PANEL_URL=
+PTERODACTYL_API_KEY=
+PTERODACTYL_SERVER_ID=
+DISCORD_ADMIN_ROLE_ID=
 ```
 
 `DISCORD_CLIENT_ID` and `DISCORD_GUILD_ID` are needed locally for `npm run register`; the Worker itself does not need them at runtime.
@@ -120,6 +124,10 @@ Use Cloudflare Workers Free. See [docs/deploy-cloudflare.md](docs/deploy-cloudfl
 ```bash
 npm run register
 ```
+
+## BerryByte Restart
+
+The `/restart` command can restart through the BerryByte/Pterodactyl panel API or trigger a configured BerryByte automation schedule. See [docs/berrybyte-panel-api.md](docs/berrybyte-panel-api.md).
 
 ## Why Not GitHub Actions?
 

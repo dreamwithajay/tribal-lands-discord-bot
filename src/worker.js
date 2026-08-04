@@ -1,5 +1,6 @@
 import nacl from 'tweetnacl';
 import { getGameAdapter, pollingEnabled } from './games/index.js';
+import { restartServer } from './panel/pterodactyl.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const STATE_KEY = 'tribal-lands-state';
@@ -31,7 +32,13 @@ export default {
           palworldHost: Boolean(env.PALWORLD_HOST),
           palworldPort: Boolean(env.PALWORLD_PORT),
           palworldUsername: Boolean(env.PALWORLD_USERNAME),
-          palworldPassword: Boolean(env.PALWORLD_PASSWORD)
+          palworldPassword: Boolean(env.PALWORLD_PASSWORD),
+          panelUrl: Boolean(env.PTERODACTYL_PANEL_URL),
+          panelApiKey: Boolean(env.PTERODACTYL_API_KEY),
+          panelServerId: Boolean(env.PTERODACTYL_SERVER_ID),
+          restartScheduleId: Boolean(env.PTERODACTYL_RESTART_SCHEDULE_ID),
+          adminRoleId: Boolean(env.DISCORD_ADMIN_ROLE_ID),
+          adminUserIds: Boolean(env.DISCORD_ADMIN_USER_IDS)
         }
       });
     }
@@ -77,6 +84,14 @@ async function handleCommand(interaction, env) {
   const command = interaction.data?.name;
   const adapter = getGameAdapter(env);
 
+  if (command === 'restart') {
+    return handleRestartCommand(interaction, env);
+  }
+
+  if (command === 'help') {
+    return interactionResponse('', [buildHelpEmbed({ env })]);
+  }
+
   if (!adapter) {
     return interactionResponse(`${serverName(env)} has no active game monitor right now.`);
   }
@@ -114,11 +129,26 @@ async function handleCommand(interaction, env) {
     return interactionResponse('', [buildServerEmbed({ env, adapter, snapshot: cached, state })]);
   }
 
-  if (command === 'help') {
-    return interactionResponse('', [buildHelpEmbed({ env })]);
+  return interactionResponse(`Unknown command.`);
+}
+
+async function handleRestartCommand(interaction, env) {
+  if (!isAuthorizedAdmin(interaction, env)) {
+    return interactionResponse(`Only configured ${serverName(env)} admins can restart the server.`);
   }
 
-  return interactionResponse(`Unknown command.`);
+  try {
+    const result = await restartServer(env);
+    const suffix =
+      result.mode === 'schedule'
+        ? 'BerryByte automation has been triggered.'
+        : 'Restart signal has been sent to the server panel.';
+    await sendChannelMessage(env, `${serverName(env)} restart requested by ${interaction.member?.user?.username ?? 'an admin'}. ${suffix}`);
+    return interactionResponse(`${serverName(env)} restart started. ${suffix}`);
+  } catch (error) {
+    console.error('Restart command failed', error);
+    return interactionResponse(`Restart failed: ${formatCommandError(error)}`);
+  }
 }
 
 async function runMonitor(env) {
@@ -380,6 +410,7 @@ function buildHelpEmbed({ env }) {
       { name: '/status', value: 'Show the current server panel.', inline: false },
       { name: '/players', value: 'Show who is online.', inline: false },
       { name: '/server', value: 'Show game, version, monitor, and last-check details.', inline: false },
+      { name: '/restart', value: 'Admin-only server restart through the BerryByte panel API.', inline: false },
       { name: '/help', value: 'Show this command list.', inline: false }
     ],
     footer: { text: STATUS_FOOTER }
@@ -467,6 +498,33 @@ function formatErrorForDiscord(error) {
     .filter(Boolean)
     .join(' - ');
   return parts.slice(0, 1024);
+}
+
+function formatCommandError(error) {
+  const parts = [error.status ? `HTTP ${error.status}` : null, error.message, error.detail]
+    .filter(Boolean)
+    .join(' - ');
+  return parts.slice(0, 180);
+}
+
+function isAuthorizedAdmin(interaction, env) {
+  const userId = interaction.member?.user?.id ?? interaction.user?.id;
+  const adminUserIds = String(env.DISCORD_ADMIN_USER_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (userId && adminUserIds.includes(userId)) {
+    return true;
+  }
+
+  const adminRoleId = String(env.DISCORD_ADMIN_ROLE_ID || '').trim();
+  const roles = interaction.member?.roles;
+  if (adminRoleId && Array.isArray(roles) && roles.includes(adminRoleId)) {
+    return true;
+  }
+
+  return false;
 }
 
 async function sendChannelMessage(env, content, extra = {}) {

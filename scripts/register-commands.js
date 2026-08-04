@@ -31,6 +31,11 @@ const commands = [
     name: 'help',
     description: `Show ${serverName} bot commands.`,
     type: 1
+  },
+  {
+    name: 'restart',
+    description: `Restart ${serverName}. Admin only.`,
+    type: 1
   }
 ];
 
@@ -56,4 +61,4 @@ if (!response.ok) {
   throw new Error(`Discord command registration failed: ${response.status} ${await response.text()}`);
 }
 
-console.log(`Registered /status, /players, /server, and /help for ${serverName}.`);
+console.log(`Registered /status, /players, /server, /help, and /restart for ${serverName}.`);
