@@ -97,6 +97,8 @@ npm run presence
 
 See [docs/deploy-google-compute-presence.md](docs/deploy-google-compute-presence.md).
 
+The presence service rotates online activity lines with player count, game/version, server FPS, and uptime when available. If Palworld cannot be reached, it switches to the configured offline status and shows an offline/signal-lost activity.
+
 ## Discord Setup
 
 1. Open the Discord Developer Portal and create an application.

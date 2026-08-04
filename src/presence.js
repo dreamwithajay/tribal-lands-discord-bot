@@ -34,24 +34,16 @@ async function updatePresence() {
 
   try {
     const snapshot = await adapter.fetchSnapshot(env);
-    const count = snapshot.maxPlayers
-      ? `${snapshot.currentPlayers}/${snapshot.maxPlayers}`
-      : String(snapshot.currentPlayers);
-    const lines = [
-      { name: `${count} survivors online`, type: ActivityType.Watching },
-      { name: serverName(), type: ActivityType.Playing },
-      { name: `${adapter.label}${snapshot.version ? ` ${snapshot.version}` : ''}`, type: ActivityType.Watching }
-    ];
 
     client.user.setPresence({
       status: presenceStatus(),
-      activities: [lines[pulseIndex(lines.length)]]
+      activities: [onlineActivityLine({ adapter, snapshot })]
     });
   } catch (error) {
     console.warn('Presence poll failed', error);
     client.user.setPresence({
-      status: 'idle',
-      activities: [{ name: `${serverName()} signal`, type: ActivityType.Watching }]
+      status: offlinePresenceStatus(),
+      activities: [offlineActivityLine()]
     });
   }
 }
@@ -73,6 +65,42 @@ function pulseIndex(length) {
   return Math.floor(Date.now() / activityIntervalMs()) % length;
 }
 
+function onlineActivityLine({ adapter, snapshot }) {
+  const count = snapshot.maxPlayers
+    ? `${snapshot.currentPlayers}/${snapshot.maxPlayers}`
+    : String(snapshot.currentPlayers);
+  const fps = firstNumber([
+    snapshot.metrics?.serverfps,
+    snapshot.metrics?.serverFps,
+    snapshot.metrics?.fps,
+    snapshot.metrics?.server_fps
+  ]);
+  const uptime = firstNumber([
+    snapshot.metrics?.uptime,
+    snapshot.metrics?.serveruptime,
+    snapshot.metrics?.serverUptime
+  ]);
+  const lines = [
+    { name: `Online - ${count} survivors`, type: ActivityType.Watching },
+    { name: `${serverName()} - online`, type: ActivityType.Playing },
+    { name: `${adapter.label}${snapshot.version ? ` ${snapshot.version}` : ''}`, type: ActivityType.Watching },
+    fps ? { name: `Server FPS ${Math.round(fps)}`, type: ActivityType.Watching } : null,
+    uptime ? { name: `Uptime ${formatDuration(uptime * 1000)}`, type: ActivityType.Watching } : null
+  ].filter(Boolean);
+
+  return lines[pulseIndex(lines.length)];
+}
+
+function offlineActivityLine() {
+  const lines = [
+    { name: `${serverName()} - offline`, type: ActivityType.Watching },
+    { name: 'server signal lost', type: ActivityType.Watching },
+    { name: 'for the campfires to return', type: ActivityType.Watching }
+  ];
+
+  return lines[pulseIndex(lines.length)];
+}
+
 function activityIntervalMs() {
   const seconds = Number.parseInt(env.PRESENCE_UPDATE_SECONDS || String(DEFAULT_ACTIVITY_SECONDS), 10);
   return Math.max(seconds, 30) * 1000;
@@ -83,8 +111,39 @@ function presenceStatus() {
   return ['online', 'idle', 'dnd', 'invisible'].includes(status) ? status : 'online';
 }
 
+function offlinePresenceStatus() {
+  const status = String(env.DISCORD_OFFLINE_PRESENCE_STATUS || 'idle').toLowerCase();
+  return ['online', 'idle', 'dnd', 'invisible'].includes(status) ? status : 'idle';
+}
+
 function serverName() {
   return env.SERVER_DISPLAY_NAME || 'The Tribal Lands';
+}
+
+function firstNumber(values) {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function formatDuration(ms) {
+  if (!ms || ms < 1000) {
+    return 'under 1m';
+  }
+
+  const totalMinutes = Math.floor(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) {
+    return `${Math.max(totalMinutes, 1)}m`;
+  }
+
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
 function requiredEnv(name) {
