@@ -170,10 +170,19 @@ async function runMonitor(env) {
 
 async function handleOnlineSnapshot(env, adapter, state, snapshot) {
   const providerChanged = state.gameProvider && state.gameProvider !== adapter.id;
+  const restarted = !providerChanged && restartDetected(env, state.lastSnapshot, snapshot);
   const recovered = !providerChanged && (state.offlineAnnounced || state.failureCount >= offlineFailureThreshold(env));
   const downtimeMs = state.offlineSince ? Date.now() - new Date(state.offlineSince).getTime() : null;
 
-  if (recovered) {
+  if (restarted) {
+    await sendNotificationMessage(
+      env,
+      renderTemplate(adapter.copy.restartDetected, {
+        server: serverName(env),
+        uptime: formatDuration(snapshot.uptimeSeconds * 1000)
+      })
+    );
+  } else if (recovered) {
     await sendNotificationMessage(
       env,
       renderTemplate(adapter.copy.recovered, {
@@ -196,12 +205,13 @@ async function handleOnlineSnapshot(env, adapter, state, snapshot) {
     offlineSince: null,
     offlineAnnounced: false,
     authFailureAnnounced: false,
+    lastRestartDetectedAt: restarted ? new Date().toISOString() : state.lastRestartDetectedAt,
     lastSnapshot: serializeSnapshot(adapter, snapshot),
     lastPlayerMap: Object.fromEntries(snapshot.players.map((player) => [player.key, player])),
     updatedAt: new Date().toISOString()
   };
 
-  await updateStatusMessage(env, adapter, nextState, snapshot, { force: recovered || providerChanged });
+  await updateStatusMessage(env, adapter, nextState, snapshot, { force: recovered || restarted || providerChanged });
   await writeState(env, nextState);
 }
 
@@ -407,6 +417,7 @@ function buildServerEmbed({ env, adapter, snapshot, state }) {
       { name: 'Version', value: snapshot.version ?? 'Unknown', inline: true },
       { name: 'Players', value: capacity, inline: true },
       { name: 'Monitor', value: pollingEnabled(env) ? 'Enabled' : 'Paused', inline: true },
+      { name: 'Uptime', value: formatOptionalDuration(snapshot.uptimeSeconds), inline: true },
       { name: 'Last check', value: formatDiscordTimestamp(snapshot.fetchedAt), inline: true }
     ],
     footer: { text: STATUS_FOOTER }
@@ -477,7 +488,8 @@ function serializeSnapshot(adapter, snapshot) {
     gameLabel: adapter.label,
     version: snapshot.version,
     currentPlayers: snapshot.currentPlayers,
-    maxPlayers: snapshot.maxPlayers
+    maxPlayers: snapshot.maxPlayers,
+    uptimeSeconds: snapshot.uptimeSeconds
   };
 }
 
@@ -487,8 +499,24 @@ function deserializeSnapshot(snapshot) {
     fetchedAt: new Date(snapshot.fetchedAt),
     players: Array.isArray(snapshot.players) ? snapshot.players : [],
     currentPlayers: Number(snapshot.currentPlayers ?? snapshot.players?.length ?? 0),
-    maxPlayers: snapshot.maxPlayers ?? null
+    maxPlayers: snapshot.maxPlayers ?? null,
+    uptimeSeconds: snapshot.uptimeSeconds ?? null
   };
+}
+
+function restartDetected(env, previousSnapshot, snapshot) {
+  const previousUptime = Number(previousSnapshot?.uptimeSeconds);
+  const currentUptime = Number(snapshot?.uptimeSeconds);
+
+  if (!Number.isFinite(previousUptime) || !Number.isFinite(currentUptime)) {
+    return false;
+  }
+
+  const minPrevious = restartMinPreviousUptimeSeconds(env);
+  const maxCurrent = restartMaxCurrentUptimeSeconds(env);
+  const minimumDrop = restartMinimumDropSeconds(env);
+
+  return previousUptime >= minPrevious && currentUptime <= maxCurrent && previousUptime - currentUptime >= minimumDrop;
 }
 
 function summarizeError(error) {
@@ -652,6 +680,18 @@ function statusUpdateMs(env) {
   return Number.parseInt(env.STATUS_UPDATE_SECONDS || '60', 10) * 1000;
 }
 
+function restartMinPreviousUptimeSeconds(env) {
+  return Number.parseInt(env.RESTART_MIN_PREVIOUS_UPTIME_SECONDS || '300', 10);
+}
+
+function restartMaxCurrentUptimeSeconds(env) {
+  return Number.parseInt(env.RESTART_MAX_CURRENT_UPTIME_SECONDS || '900', 10);
+}
+
+function restartMinimumDropSeconds(env) {
+  return Number.parseInt(env.RESTART_MINIMUM_DROP_SECONDS || '120', 10);
+}
+
 function formatNames(players) {
   return players.map((player) => player.displayName).join(', ');
 }
@@ -693,6 +733,15 @@ function formatDuration(ms) {
   }
 
   return `${minutes} minutes`;
+}
+
+function formatOptionalDuration(seconds) {
+  const parsed = Number(seconds);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 'Unknown';
+  }
+
+  return formatDuration(parsed * 1000);
 }
 
 function json(value, init = {}) {

@@ -10,6 +10,7 @@ It currently monitors the Palworld REST API, keeps one Discord status message up
 - Optional separate channel for player join/leave and server event notifications
 - Offline/crash detection after repeated failed checks
 - Recovery notification with approximate downtime
+- Restart detection from server uptime resets, useful for daily restart notices
 - Slash commands: `/status`, `/players`, `/server`, `/help`, and admin-only `/restart`
 - Rotating Signal line in the persistent status panel
 - Optional Google Compute presence service for native Discord online/activity status
@@ -53,6 +54,9 @@ PALWORLD_USERNAME=admin
 SERVER_DISPLAY_NAME=The Tribal Lands
 STATUS_UPDATE_SECONDS=60
 OFFLINE_FAILURE_THRESHOLD=2
+RESTART_MIN_PREVIOUS_UPTIME_SECONDS=300
+RESTART_MAX_CURRENT_UPTIME_SECONDS=900
+RESTART_MINIMUM_DROP_SECONDS=120
 ```
 
 `STATUS_MESSAGE_ID` is optional. If omitted, the Worker creates one and stores its ID in Worker KV.
@@ -89,6 +93,20 @@ When the server changes to another game, add a new adapter in `src/games/`, regi
 The scheduled monitor compares the latest player list to the previous successful check. It sends a message only when players actually join or leave, so the channel should not get spammed every minute.
 
 Because Cloudflare Free cron runs once per minute, notices can be delayed by up to about a minute.
+
+## Restart Detection
+
+The monitor detects restarts by watching Palworld uptime from the metrics endpoint. If uptime drops sharply from a previously running server to a fresh low uptime, it posts a restart-detected notice to the notifications channel.
+
+Defaults:
+
+```bash
+RESTART_MIN_PREVIOUS_UPTIME_SECONDS=300
+RESTART_MAX_CURRENT_UPTIME_SECONDS=900
+RESTART_MINIMUM_DROP_SECONDS=120
+```
+
+That means the previous uptime must be at least 5 minutes, the new uptime must be 15 minutes or less, and the drop must be at least 2 minutes.
 
 ## Discord Presence
 

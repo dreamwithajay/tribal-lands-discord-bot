@@ -18,7 +18,8 @@ export const palworldAdapter = {
     currentPlayers: 'Currently in {server}: {players}.',
     multiJoin: 'A party crossed into {server}: {players}.',
     multiLeave: 'A party left {server}: {players}.',
-    emptyAfterLeave: 'Silence falls over {server}. No survivors remain.'
+    emptyAfterLeave: 'Silence falls over {server}. No survivors remain.',
+    restartDetected: 'Restart detected for {server}. The camp is back online. Current uptime: {uptime}.'
   },
   joinLines: [
     '{player} has crossed into {server}.',
@@ -129,6 +130,12 @@ async function fetchPalworldSnapshot(env) {
     settings,
     currentPlayers: playerList.length,
     maxPlayers,
+    uptimeSeconds: firstNumber([
+      metrics?.uptime,
+      metrics?.serveruptime,
+      metrics?.serverUptime,
+      metrics?.server_uptime
+    ]),
     version: info?.version ?? null
   };
 }
